@@ -51,10 +51,10 @@ def carregar_config():
         people = json.loads(people_raw)
         assert isinstance(people, list) and people
     except Exception as e:
-        sys.exit(f"ERRO: WHATSAPP_PEOPLE inválido: {e}")
+        sys.exit(f"ERRO: WHATSAPP_PEOPLE invalido: {e}")
     return {
-        "access_token": tok.strip(),
-        "phone_number_id": str(phone_id).strip(),
+        "access_token": "".join(str(tok).split()),  # remove espacos/quebras de linha
+        "phone_number_id": "".join(str(phone_id).split()),
         "people": people,
         "template_name": os.environ.get("WHATSAPP_TEMPLATE_NAME", "lembrete_areia_gato"),
         "language_code": os.environ.get("WHATSAPP_LANGUAGE_CODE", "pt_BR"),
