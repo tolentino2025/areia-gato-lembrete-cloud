@@ -1,0 +1,39 @@
+name: Lembrete Areia do Gato
+
+on:
+  schedule:
+    # 14:00 America/Sao_Paulo (UTC-3) = 17:00 UTC. Brasil nao usa horario de verao.
+    - cron: "0 17 * * *"
+  workflow_dispatch:
+    inputs:
+      data:
+        description: "Data YYYY-MM-DD para escolher o responsavel (vazio = hoje)"
+        required: false
+        default: ""
+
+jobs:
+  enviar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Enviar lembrete
+        env:
+          WHATSAPP_TOKEN: ${{ secrets.WHATSAPP_TOKEN }}
+          WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
+          WHATSAPP_PEOPLE: ${{ secrets.WHATSAPP_PEOPLE }}
+          WHATSAPP_TEMPLATE_NAME: lembrete_areia_gato
+          WHATSAPP_LANGUAGE_CODE: pt_BR
+          DATA_INPUT: ${{ inputs.data }}
+        run: |
+          if [ -n "$DATA_INPUT" ]; then
+            python enviar_areia_gato.py --data "$DATA_INPUT"
+          else
+            python enviar_areia_gato.py
+          fi
