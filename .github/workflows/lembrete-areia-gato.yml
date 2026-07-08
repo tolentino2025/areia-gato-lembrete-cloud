@@ -2,12 +2,17 @@ name: Lembrete Areia do Gato
 
 on:
   schedule:
-    # 14:00 America/Sao_Paulo (UTC-3) = 17:00 UTC. Brasil nao usa horario de verao.
-    - cron: "0 17 * * *"
+    - cron: "0 11 * * *"   # 08:00 America/Sao_Paulo (UTC-3)
+    - cron: "0 12 * * *"   # 09:00 America/Sao_Paulo (UTC-3)
+    - cron: "0 17 * * *"   # 14:00 America/Sao_Paulo (UTC-3)
   workflow_dispatch:
     inputs:
       data:
         description: "Data YYYY-MM-DD para escolher o responsavel (vazio = hoje)"
+        required: false
+        default: ""
+      hora:
+        description: "Slot de hora SP: 8, 9 ou 14 (vazio = envia sempre)"
         required: false
         default: ""
 
@@ -31,9 +36,17 @@ jobs:
           WHATSAPP_TEMPLATE_NAME: lembrete_areia_gato
           WHATSAPP_LANGUAGE_CODE: pt_BR
           DATA_INPUT: ${{ inputs.data }}
+          HORA_INPUT: ${{ inputs.hora }}
+          SCHEDULE: ${{ github.event.schedule }}
         run: |
-          if [ -n "$DATA_INPUT" ]; then
-            python enviar_areia_gato.py --data "$DATA_INPUT"
-          else
-            python enviar_areia_gato.py
-          fi
+          HORA="$HORA_INPUT"
+          case "$SCHEDULE" in
+            "0 11 * * *") HORA=8 ;;
+            "0 12 * * *") HORA=9 ;;
+            "0 17 * * *") HORA=14 ;;
+          esac
+          ARGS=""
+          if [ -n "$DATA_INPUT" ]; then ARGS="$ARGS --data $DATA_INPUT"; fi
+          if [ -n "$HORA" ]; then ARGS="$ARGS --hora $HORA"; fi
+          echo "Executando com slot HORA='$HORA' (schedule='$SCHEDULE')"
+          python enviar_areia_gato.py $ARGS
