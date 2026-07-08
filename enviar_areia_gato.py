@@ -15,10 +15,11 @@ Variáveis de ambiente (GitHub Secrets):
   WHATSAPP_LANGUAGE_CODE    (opcional)     padrão: pt_BR
 
 Uso:
-  python enviar_areia_gato.py                  # responsável de HOJE (America/Sao_Paulo)
-  python enviar_areia_gato.py --dry-run        # mostra quem é, sem enviar
-  python enviar_areia_gato.py --data 2026-06-23  # simula a data (escolhe a pessoa)
-  python enviar_areia_gato.py --todos          # envia para todos (teste)
+  python enviar_areia_gato.py                     # responsavel de HOJE (America/Sao_Paulo)
+  python enviar_areia_gato.py --dry-run           # mostra quem e, sem enviar
+  python enviar_areia_gato.py --data 2026-06-23   # simula a data (escolhe a pessoa)
+  python enviar_areia_gato.py --hora 8            # so envia se 8h for horario da pessoa
+  python enviar_areia_gato.py --todos             # envia para todos (teste)
 """
 
 import json, os, sys, argparse, urllib.request, urllib.error
@@ -26,8 +27,21 @@ from datetime import date, datetime, timezone, timedelta
 
 GRAPH_VERSION = "v25.0"
 
-# Âncora da rotação: segunda 22/06/2026 = índice 0 (primeira pessoa da lista).
+# Ancora da rotacao: segunda 22/06/2026 = indice 0 (primeira pessoa da lista).
 ANCHOR = date(2026, 6, 22)
+
+# Horarios de envio por pessoa (hora local America/Sao_Paulo).
+# Cleiton, Thais e Isabella: 8h e repete 9h. Laurinha: 14h.
+HORAS_POR_NOME = {
+    "Thais":    [8, 9],
+    "Cleiton":  [8, 9],
+    "Laurinha": [14],
+    "Isabella": [8, 9],
+}
+DEFAULT_HORAS = [14]
+
+def horas_da_pessoa(nome):
+    return HORAS_POR_NOME.get(nome, DEFAULT_HORAS)
 
 def carregar_config():
     tok = os.environ.get("WHATSAPP_TOKEN")
@@ -104,6 +118,7 @@ def main():
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--todos", action="store_true")
     ap.add_argument("--data")
+    ap.add_argument("--hora", help="slot de hora SP (8, 9, 14). Vazio = envia sempre.")
     args = ap.parse_args()
 
     cfg = carregar_config()
@@ -113,7 +128,18 @@ def main():
 
     alvos = cfg["people"] if args.todos else [responsavel(cfg, d)]
     if not args.todos:
-        print(f"Responsavel do dia: {alvos[0]['nome']}")
+        p = alvos[0]
+        horas = horas_da_pessoa(p["nome"])
+        print(f"Responsavel do dia: {p['nome']} (horarios: {horas}h)")
+        # Se veio de um slot agendado, so envia se o horario for da pessoa.
+        if args.hora not in (None, ""):
+            try:
+                slot = int(args.hora)
+            except ValueError:
+                slot = None
+            if slot not in horas:
+                print(f"Slot {args.hora}h nao e horario de {p['nome']} ({horas}h). Nada a enviar.")
+                return
 
     if args.dry_run:
         for p in alvos:
