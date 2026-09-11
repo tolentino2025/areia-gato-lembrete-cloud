@@ -16,6 +16,9 @@ on:
         required: false
         default: ""
 
+permissions:
+  contents: write
+
 jobs:
   enviar:
     runs-on: ubuntu-latest
@@ -50,3 +53,21 @@ jobs:
           if [ -n "$HORA" ]; then ARGS="$ARGS --hora $HORA"; fi
           echo "Executando com slot HORA='$HORA' (schedule='$SCHEDULE')"
           python enviar_areia_gato.py $ARGS
+
+      # Sem commits por 60 dias, o GitHub DESATIVA workflows agendados.
+      # Este passo faz um commit automatico nos dias 01 e 15 de cada mes,
+      # mantendo o repositorio "ativo" para sempre.
+      - name: Keepalive (evita desativacao por inatividade)
+        if: always()
+        run: |
+          DIA=$(date -u +%d)
+          if [ "$DIA" != "01" ] && [ "$DIA" != "15" ]; then
+            echo "Dia $DIA - keepalive nao necessario hoje."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          date -u +"%Y-%m-%dT%H:%M:%SZ" > .keepalive
+          git add .keepalive
+          git commit -m "keepalive: manter workflow agendado ativo" || exit 0
+          git push
