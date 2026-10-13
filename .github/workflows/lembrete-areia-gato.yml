@@ -1,10 +1,20 @@
 name: Lembrete Areia do Gato
 
+# ESTRATEGIA DE PONTUALIDADE
+# O gatilho "schedule" do GitHub atrasa de 3h a 9h (medido em 12 dias).
+# Por isso cada envio e disparado COM ANTECEDENCIA e o job AGUARDA ate o
+# horario alvo antes de enviar:
+#   - disparo 03:17 SP -> envia 08:00 SP
+#   - disparo 04:17 SP -> envia 09:00 SP
+#   - disparo 09:17 SP -> envia 14:00 SP
+# Se o GitHub atrasar alem do alvo, envia imediatamente (sem espera).
+# Minutos "quebrados" (:17) evitam a fila de pico dos minutos redondos.
+
 on:
   schedule:
-    - cron: "0 11 * * *"   # 08:00 America/Sao_Paulo (UTC-3)
-    - cron: "0 12 * * *"   # 09:00 America/Sao_Paulo (UTC-3)
-    - cron: "0 17 * * *"   # 14:00 America/Sao_Paulo (UTC-3)
+    - cron: "17 6 * * *"    # 03:17 SP -> alvo 08:00 SP (11:00 UTC)
+    - cron: "17 7 * * *"    # 04:17 SP -> alvo 09:00 SP (12:00 UTC)
+    - cron: "17 12 * * *"   # 09:17 SP -> alvo 14:00 SP (17:00 UTC)
   workflow_dispatch:
     inputs:
       data:
@@ -22,6 +32,7 @@ permissions:
 jobs:
   enviar:
     runs-on: ubuntu-latest
+    timeout-minutes: 350
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,6 +41,29 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Aguardar ate o horario alvo
+        env:
+          SCHEDULE: ${{ github.event.schedule }}
+        run: |
+          case "$SCHEDULE" in
+            "17 6 * * *")  ALVO_UTC=11 ;;   # 08:00 America/Sao_Paulo
+            "17 7 * * *")  ALVO_UTC=12 ;;   # 09:00 America/Sao_Paulo
+            "17 12 * * *") ALVO_UTC=17 ;;   # 14:00 America/Sao_Paulo
+            *) echo "Execucao manual: envia imediatamente."; exit 0 ;;
+          esac
+          AGORA=$(date -u +%s)
+          ALVO=$(date -u -d "today ${ALVO_UTC}:00:00" +%s)
+          DIFF=$(( ALVO - AGORA ))
+          echo "Agora:  $(date -u) (UTC)"
+          echo "Alvo:   ${ALVO_UTC}:00 UTC"
+          if [ "$DIFF" -le 0 ]; then
+            echo "O GitHub atrasou $(( -DIFF / 60 )) min alem do alvo. Enviando agora."
+            exit 0
+          fi
+          if [ "$DIFF" -gt 18000 ]; then DIFF=18000; fi
+          echo "Aguardando ${DIFF}s ($(( DIFF / 60 )) min) ate o horario alvo."
+          sleep "$DIFF"
 
       - name: Enviar lembrete
         env:
@@ -44,19 +78,18 @@ jobs:
         run: |
           HORA="$HORA_INPUT"
           case "$SCHEDULE" in
-            "0 11 * * *") HORA=8 ;;
-            "0 12 * * *") HORA=9 ;;
-            "0 17 * * *") HORA=14 ;;
+            "17 6 * * *")  HORA=8 ;;
+            "17 7 * * *")  HORA=9 ;;
+            "17 12 * * *") HORA=14 ;;
           esac
           ARGS=""
           if [ -n "$DATA_INPUT" ]; then ARGS="$ARGS --data $DATA_INPUT"; fi
           if [ -n "$HORA" ]; then ARGS="$ARGS --hora $HORA"; fi
-          echo "Executando com slot HORA='$HORA' (schedule='$SCHEDULE')"
+          echo "Enviando as $(TZ=America/Sao_Paulo date) - slot HORA='$HORA'"
           python enviar_areia_gato.py $ARGS
 
       # Sem commits por 60 dias, o GitHub DESATIVA workflows agendados.
-      # Este passo faz um commit automatico nos dias 01 e 15 de cada mes,
-      # mantendo o repositorio "ativo" para sempre.
+      # Commit automatico nos dias 01 e 15 mantem o repositorio ativo.
       - name: Keepalive (evita desativacao por inatividade)
         if: always()
         run: |
