@@ -4,14 +4,16 @@ name: Lembrete Areia do Gato
 # O gatilho "schedule" do GitHub atrasa de 3h a 9h (medido em 12 dias).
 # Por isso cada envio e disparado COM ANTECEDENCIA e o job AGUARDA ate o
 # horario alvo antes de enviar:
-#   - disparo 03:17 SP -> envia 08:00 SP
-#   - disparo 04:17 SP -> envia 09:00 SP
-#   - disparo 09:17 SP -> envia 14:00 SP
+#   - disparo 02:17 SP (seg) -> escala da semana para todos, 07:00 SP
+#   - disparo 03:17 SP       -> lembrete do dia, 08:00 SP
+#   - disparo 04:17 SP       -> repeticao, 09:00 SP
+#   - disparo 09:17 SP       -> lembrete do dia, 14:00 SP
 # Se o GitHub atrasar alem do alvo, envia imediatamente (sem espera).
 # Minutos "quebrados" (:17) evitam a fila de pico dos minutos redondos.
 
 on:
   schedule:
+    - cron: "17 5 * * 1"    # SEGUNDA 02:17 SP -> escala semanal 07:00 SP (10:00 UTC)
     - cron: "17 6 * * *"    # 03:17 SP -> alvo 08:00 SP (11:00 UTC)
     - cron: "17 7 * * *"    # 04:17 SP -> alvo 09:00 SP (12:00 UTC)
     - cron: "17 12 * * *"   # 09:17 SP -> alvo 14:00 SP (17:00 UTC)
@@ -25,6 +27,11 @@ on:
         description: "Slot de hora SP: 8, 9 ou 14 (vazio = envia sempre)"
         required: false
         default: ""
+      escala:
+        description: "Marque para enviar a ESCALA DA SEMANA para todos"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: write
@@ -47,6 +54,7 @@ jobs:
           SCHEDULE: ${{ github.event.schedule }}
         run: |
           case "$SCHEDULE" in
+            "17 5 * * 1")  ALVO_UTC=10 ;;   # 07:00 America/Sao_Paulo (segunda)
             "17 6 * * *")  ALVO_UTC=11 ;;   # 08:00 America/Sao_Paulo
             "17 7 * * *")  ALVO_UTC=12 ;;   # 09:00 America/Sao_Paulo
             "17 12 * * *") ALVO_UTC=17 ;;   # 14:00 America/Sao_Paulo
@@ -65,27 +73,33 @@ jobs:
           echo "Aguardando ${DIFF}s ($(( DIFF / 60 )) min) ate o horario alvo."
           sleep "$DIFF"
 
-      - name: Enviar lembrete
+      - name: Enviar
         env:
           WHATSAPP_TOKEN: ${{ secrets.WHATSAPP_TOKEN }}
           WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
           WHATSAPP_PEOPLE: ${{ secrets.WHATSAPP_PEOPLE }}
           WHATSAPP_TEMPLATE_NAME: lembrete_areia_gato
+          WHATSAPP_TEMPLATE_ESCALA: escala_semanal_areia_gato
           WHATSAPP_LANGUAGE_CODE: pt_BR
           DATA_INPUT: ${{ inputs.data }}
           HORA_INPUT: ${{ inputs.hora }}
+          ESCALA_INPUT: ${{ inputs.escala }}
           SCHEDULE: ${{ github.event.schedule }}
         run: |
           HORA="$HORA_INPUT"
+          ESCALA=""
           case "$SCHEDULE" in
+            "17 5 * * 1")  ESCALA="--escala" ;;
             "17 6 * * *")  HORA=8 ;;
             "17 7 * * *")  HORA=9 ;;
             "17 12 * * *") HORA=14 ;;
           esac
+          if [ "$ESCALA_INPUT" = "true" ]; then ESCALA="--escala"; HORA=""; fi
           ARGS=""
+          if [ -n "$ESCALA" ]; then ARGS="$ARGS $ESCALA"; fi
           if [ -n "$DATA_INPUT" ]; then ARGS="$ARGS --data $DATA_INPUT"; fi
           if [ -n "$HORA" ]; then ARGS="$ARGS --hora $HORA"; fi
-          echo "Enviando as $(TZ=America/Sao_Paulo date) - slot HORA='$HORA'"
+          echo "Enviando as $(TZ=America/Sao_Paulo date) - args: '$ARGS'"
           python enviar_areia_gato.py $ARGS
 
       # Sem commits por 60 dias, o GitHub DESATIVA workflows agendados.
