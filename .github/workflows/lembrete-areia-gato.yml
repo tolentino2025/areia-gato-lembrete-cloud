@@ -1,22 +1,24 @@
 name: Lembrete Areia do Gato
 
+# O QUE SAI EM CADA HORARIO (America/Sao_Paulo)
+#   SEGUNDA 07h -> ESCALA da semana para TODOS
+#           08h -> AVISO "hoje e a vez de X" para os OUTROS 3
+#                  + LEMBRETE pessoal, se 8h for horario do responsavel
+#           09h -> LEMBRETE pessoal (repeticao), se 9h for horario dele
+#           14h -> LEMBRETE pessoal, se 14h for horario dele (Laurinha)
+#
 # ESTRATEGIA DE PONTUALIDADE
 # O gatilho "schedule" do GitHub atrasa de 3h a 9h (medido em 12 dias).
-# Por isso cada envio e disparado COM ANTECEDENCIA e o job AGUARDA ate o
-# horario alvo antes de enviar:
-#   - disparo 02:17 SP (seg) -> escala da semana para todos, 07:00 SP
-#   - disparo 03:17 SP       -> lembrete do dia, 08:00 SP
-#   - disparo 04:17 SP       -> repeticao, 09:00 SP
-#   - disparo 09:17 SP       -> lembrete do dia, 14:00 SP
+# Cada envio e disparado COM ANTECEDENCIA e o job AGUARDA ate o horario alvo.
 # Se o GitHub atrasar alem do alvo, envia imediatamente (sem espera).
 # Minutos "quebrados" (:17) evitam a fila de pico dos minutos redondos.
 
 on:
   schedule:
     - cron: "17 5 * * 1"    # SEGUNDA 02:17 SP -> escala semanal 07:00 SP (10:00 UTC)
-    - cron: "17 6 * * *"    # 03:17 SP -> alvo 08:00 SP (11:00 UTC)
-    - cron: "17 7 * * *"    # 04:17 SP -> alvo 09:00 SP (12:00 UTC)
-    - cron: "17 12 * * *"   # 09:17 SP -> alvo 14:00 SP (17:00 UTC)
+    - cron: "17 6 * * *"    # 03:17 SP -> alvo 08:00 SP (11:00 UTC) - aviso + lembrete
+    - cron: "17 7 * * *"    # 04:17 SP -> alvo 09:00 SP (12:00 UTC) - repeticao
+    - cron: "17 12 * * *"   # 09:17 SP -> alvo 14:00 SP (17:00 UTC) - lembrete
   workflow_dispatch:
     inputs:
       data:
@@ -27,6 +29,11 @@ on:
         description: "Slot de hora SP: 8, 9 ou 14 (vazio = envia sempre)"
         required: false
         default: ""
+      aviso:
+        description: "Marque para enviar o AVISO 'hoje e a vez de X' aos demais"
+        type: boolean
+        required: false
+        default: false
       escala:
         description: "Marque para enviar a ESCALA DA SEMANA para todos"
         type: boolean
@@ -79,24 +86,29 @@ jobs:
           WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
           WHATSAPP_PEOPLE: ${{ secrets.WHATSAPP_PEOPLE }}
           WHATSAPP_TEMPLATE_NAME: lembrete_areia_gato
+          WHATSAPP_TEMPLATE_AVISO: aviso_dia_areia_gato
           WHATSAPP_TEMPLATE_ESCALA: escala_semanal_areia_gato
           WHATSAPP_LANGUAGE_CODE: pt_BR
           DATA_INPUT: ${{ inputs.data }}
           HORA_INPUT: ${{ inputs.hora }}
+          AVISO_INPUT: ${{ inputs.aviso }}
           ESCALA_INPUT: ${{ inputs.escala }}
           SCHEDULE: ${{ github.event.schedule }}
         run: |
           HORA="$HORA_INPUT"
+          AVISO=""
           ESCALA=""
           case "$SCHEDULE" in
             "17 5 * * 1")  ESCALA="--escala" ;;
-            "17 6 * * *")  HORA=8 ;;
+            "17 6 * * *")  HORA=8; AVISO="--aviso" ;;
             "17 7 * * *")  HORA=9 ;;
             "17 12 * * *") HORA=14 ;;
           esac
-          if [ "$ESCALA_INPUT" = "true" ]; then ESCALA="--escala"; HORA=""; fi
+          if [ "$AVISO_INPUT" = "true" ]; then AVISO="--aviso"; fi
+          if [ "$ESCALA_INPUT" = "true" ]; then ESCALA="--escala"; HORA=""; AVISO=""; fi
           ARGS=""
           if [ -n "$ESCALA" ]; then ARGS="$ARGS $ESCALA"; fi
+          if [ -n "$AVISO" ]; then ARGS="$ARGS $AVISO"; fi
           if [ -n "$DATA_INPUT" ]; then ARGS="$ARGS --data $DATA_INPUT"; fi
           if [ -n "$HORA" ]; then ARGS="$ARGS --hora $HORA"; fi
           echo "Enviando as $(TZ=America/Sao_Paulo date) - args: '$ARGS'"
